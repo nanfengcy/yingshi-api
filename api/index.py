@@ -3,35 +3,36 @@ import requests
 import re
 import urllib.parse
 import random
+import urllib3
 
 app = Flask(__name__)
+# 禁用 HTTPS 警告，防止 Vercel 环境报错
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 base_url = "https://yingshi.co"
 
 def fetch_html(url):
-    # 随机生成假IP，完美伪装人类
+    # 随机假 IP 伪装
     fake_ip = f"{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://yingshi.co/',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
         'X-Forwarded-For': fake_ip,
         'Client-IP': fake_ip
     }
     try:
-        # 增加 requests.packages.urllib3.disable_warnings() 避免SSL报错
-        requests.packages.urllib3.disable_warnings()
         res = requests.get(url, headers=headers, verify=False, timeout=10)
         res.encoding = 'utf-8'
         return res.text
     except Exception as e:
-        print(f"Fetch Error: {e}")
+        print(f"抓取失败: {e}")
         return ""
 
-# 兼容根目录和 /api 目录的请求
-@app.route('/api', methods=['GET'])
-@app.route('/', methods=['GET'])
-def handler():
+# 万能路由：无论 Vercel 怎么解析路径，都能命中这个函数
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def catch_all(path):
     ac = request.args.get('ac', 'list')
     wd = request.args.get('wd', '')
     ids = request.args.get('ids', '')
@@ -47,7 +48,7 @@ def handler():
         "list": []
     }
 
-    # === 第一步：搜索列表 ===
+    # === 搜索逻辑 ===
     if (ac == 'list' or ac == 'videolist') and wd:
         search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}-------------.html"
         html = fetch_html(search_url)
@@ -76,10 +77,9 @@ def handler():
                 })
         return jsonify(response_data)
 
-    # === 第二步：详情播放 ===
+    # === 详情与播放逻辑 ===
     elif ac == 'detail' and ids:
         id_list = [i for i in ids.split(',') if i]
-        
         for vid in id_list:
             detail_url = base_url + vid
             html = fetch_html(detail_url)
@@ -102,7 +102,7 @@ def handler():
             response_data['list'].append({
                 "vod_id": vid,
                 "vod_name": "影视资源",
-                "vod_play_from": "影视工厂线路",
+                "vod_play_from": "影视工厂",
                 "vod_play_url": play_list_str
             })
         return jsonify(response_data)
