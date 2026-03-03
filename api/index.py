@@ -4,15 +4,19 @@ import re
 import urllib.parse
 import urllib3
 import json
+import random
 
 app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 base_url = "https://yingshi.co"
 
 def fetch_html(url):
+    fake_ip = f"{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://yingshi.co/'
+        'Referer': 'https://yingshi.co/',
+        'X-Forwarded-For': fake_ip,
+        'Client-IP': fake_ip
     }
     try:
         res = requests.get(url, headers=headers, verify=False, timeout=10)
@@ -28,32 +32,68 @@ def create_response(data):
     res.headers['Access-Control-Allow-Headers'] = '*'
     return res
 
-# 万能路由，兼容 Syncwe 发来的 /api.php/provide/vod
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'OPTIONS'])
 def catch_all(path):
     if request.method == 'OPTIONS':
         return create_response({})
 
-    # 兼容各类软件的参数传递方式
     ac = request.values.get('ac', 'list')
     wd = request.values.get('wd', '')
     ids = request.values.get('ids', '')
+    t = request.values.get('t', '')
+    pg = request.values.get('pg', '1')
 
     response_data = {
         "code": 1,
         "msg": "数据获取成功",
-        "page": 1,
-        "pagecount": 1,
+        "page": int(pg) if pg.isdigit() else 1,
+        "pagecount": 999,
         "limit": 20,
-        "total": 0,
-        "class": [{"type_id": 1, "type_name": "电影"}],
+        "total": 9999,
+        "class": [
+            {"type_id": 1, "type_name": "电影"},
+            {"type_id": 2, "type_name": "电视剧"},
+            {"type_id": 3, "type_name": "综艺"},
+            {"type_id": 4, "type_name": "动漫"}
+        ],
         "list": []
     }
 
-    # ================= 第一步：搜索列表 =================
-    if (ac == 'list' or ac == 'videolist') and wd:
-        search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}-------------.html"
+    # ================= 核心修复：首页/分类列表（应对 Syncwe 初始化健康检查） =================
+    if ac == 'list' and not wd and not ids:
+        # 抓取首页或分类页的推荐视频，让 list 不为空
+        target_url = f"{base_url}/vodshow/{t}--------{pg}---.html" if t else base_url
+        html = fetch_html(target_url)
+        
+        # 抓取首页视频的通用正则
+        items = re.findall(r'<a[^>]*class="module-item"[^>]*href="([^"]+)"[^>]*title="([^"]+)"[^>]*>.*?data-original="([^"]+)"', html, re.S)
+        
+        for url, name, pic in items:
+            pic_url = pic if pic.startswith('http') else base_url + pic
+            # 提取数字ID
+            vod_id = url
+            id_match = re.search(r'/voddetail/(\d+)\.html', url)
+            if id_match:
+                vod_id = id_match.group(1)
+            
+            response_data['list'].append({
+                "vod_id": vod_id,
+                "vod_name": name,
+                "vod_pic": pic_url,
+                "type_id": int(t) if t and t.isdigit() else 1,
+                "type_name": "视频",
+                "vod_remarks": "更新",
+                "vod_time": "2026-03-03",
+                "vod_play_from": "yingshi",
+                "vod_director": "未知",
+                "vod_actor": "未知"
+            })
+        return create_response(response_data)
+
+    # ================= 第二步：搜索列表 =================
+    elif (ac == 'list' or ac == 'videolist') and wd:
+        search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}----------{pg}---.html"
         html = fetch_html(search_url)
 
         name_regex = r'<a href="[^"]*?"><strong>(.*?)</strong></a>'
@@ -68,27 +108,35 @@ def catch_all(path):
             response_data['total'] = len(names)
             for i in range(len(names)):
                 pic = pics[i] if i < len(pics) else ""
-                
-                # 塞满所有 MacCMS 标准字段，防止 Syncwe 解析崩溃
+                pic_url = base_url + pic if pic and not pic.startswith('http') else pic
+                if not pic_url:
+                    pic_url = "https://via.placeholder.com/150x200.png?text=No+Image"
+
+                raw_url = urls[i]
+                vod_id = raw_url
+                id_match = re.search(r'/voddetail/(\d+)\.html', raw_url)
+                if id_match:
+                    vod_id = id_match.group(1)
+
                 response_data['list'].append({
-                    "vod_id": urls[i], 
+                    "vod_id": vod_id, 
                     "vod_name": names[i],
-                    "vod_pic": base_url + pic if pic and not pic.startswith('http') else pic,
+                    "vod_pic": pic_url,
                     "type_id": 1,
-                    "type_name": "电影", # Syncwe 严格要求必须有分类名
+                    "type_name": "电影",
                     "vod_remarks": "点击播放",
-                    "vod_time": "2024-01-01", # 凑数时间
-                    "vod_play_from": "影视工厂", # 凑数线路
+                    "vod_time": "2026-03-03",
+                    "vod_play_from": "yingshi",
                     "vod_director": "未知",
                     "vod_actor": "未知"
                 })
         return create_response(response_data)
 
-    # ================= 第二步：详情播放 =================
+    # ================= 第三步：详情与播放 =================
     elif ac == 'detail' and ids:
         id_list = [i for i in ids.split(',') if i]
         for vid in id_list:
-            detail_url = base_url + vid if vid.startswith('/') else f"{base_url}/{vid}"
+            detail_url = f"{base_url}/voddetail/{vid}.html" if vid.isdigit() else (base_url + vid if vid.startswith('/') else f"{base_url}/{vid}")
             html = fetch_html(detail_url)
 
             item_name_regex = r'<a class="module-play-list-link" href=".*?" title=".*?"><span>(.*?)</span></a>'
@@ -106,16 +154,15 @@ def catch_all(path):
                     ep_list.append(f"{ep_name}${ep_url}")
                 play_list_str = "#".join(ep_list)
 
-            # 详情页同样塞满标准字段
             response_data['list'].append({
                 "vod_id": vid,
-                "vod_name": "视频详情",
-                "vod_pic": "",
+                "vod_name": "影视工厂资源",
+                "vod_pic": "https://via.placeholder.com/150x200.png?text=No+Image",
                 "type_id": 1,
                 "type_name": "电影",
                 "vod_remarks": "高清",
-                "vod_time": "2024-01-01",
-                "vod_play_from": "yingshi", # 必须有线路名称
+                "vod_time": "2026-03-03",
+                "vod_play_from": "yingshi",
                 "vod_play_url": play_list_str,
                 "vod_content": "暂无简介",
                 "vod_director": "未知",
