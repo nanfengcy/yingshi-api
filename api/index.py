@@ -41,9 +41,14 @@ def catch_all(path):
     ids = request.values.get('ids', '')
     pg = request.values.get('pg', '1')
 
+    # 【终极修复1】：严格按照 iqiyizyapi 的格式，所有分页参数必须是字符串！
     response_data = {
-        "code": 1, "msg": "数据获取成功", "page": int(pg) if pg.isdigit() else 1,
-        "pagecount": 999, "limit": 20, "total": 9999,
+        "code": 1, 
+        "msg": "数据列表", 
+        "page": str(pg), 
+        "pagecount": "999", 
+        "limit": "20", 
+        "total": "9999",
         "class": [{"type_id": 1, "type_name": "电影"}],
         "list": []
     }
@@ -61,7 +66,7 @@ def catch_all(path):
         pics = re.findall(r'<img class="lazy lazyload" data-original="(.*?)"', html)
 
         if names:
-            response_data['total'] = len(names)
+            response_data['total'] = str(len(names))
             for i in range(len(names)):
                 pic = pics[i] if i < len(pics) else ""
                 pic_url = base_url + pic if pic and not pic.startswith('http') else pic
@@ -72,16 +77,17 @@ def catch_all(path):
                 vod_id = raw_url
                 id_match = re.search(r'/voddetail/(\d+)\.html', raw_url)
                 if id_match:
+                    # 【终极修复2】：严格按照 iqiyizyapi 的格式，ID 必须是纯数字（整数）
                     vod_id = int(id_match.group(1))
 
                 response_data['list'].append({
                     "vod_id": vod_id, "vod_name": names[i], "vod_pic": pic_url,
                     "type_id": 1, "type_name": "电影", "vod_remarks": "点击查看",
-                    "vod_play_from": "yingshi"
+                    "vod_play_from": "yingshim3u8"
                 })
         return create_response(response_data)
 
-    # ================= 详情与多线路抓取 =================
+    # ================= 详情与选集 =================
     elif ids:
         id_list = [i for i in ids.split(',') if i]
         for vid in id_list:
@@ -106,50 +112,42 @@ def catch_all(path):
                 for i, plist in enumerate(play_lists):
                     episodes = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)</span>', plist)
                     if episodes:
-                        ep_str_list = []
+                        # 【定海神针】：无论如何，强制在最前面塞一个测试集
+                        ep_str_list = ["【测试必出集】$https://yingshi.co/test.m3u8"]
                         for ep_url, ep_name in episodes:
                             full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
-                            
-                            # 【真凶伏法点】：用 ?.m3u8 替换 #.m3u8，绝不破坏分割符！
                             if ".m3u8" not in full_url:
                                 full_url += "?.m3u8"
-                                
                             ep_str_list.append(f"{ep_name.strip()}${full_url}")
                         play_url_list.append("#".join(ep_str_list))
-                        play_from_list.append(f"yingshi_{i+1}")
+                        play_from_list.append(f"yingshim3u8_{i+1}")
 
-            # 保底全局提取
             if not play_url_list:
+                # 全局保底提取
                 episodes = re.findall(r'<a[^>]*class="[^"]*module-play-list-link[^"]*"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)</span>', html)
+                ep_str_list = ["【测试必出集】$https://yingshi.co/test.m3u8"]
                 if episodes:
-                    ep_str_list = []
                     for ep_url, ep_name in episodes:
                         full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
                         if ".m3u8" not in full_url:
                             full_url += "?.m3u8"
                         ep_str_list.append(f"{ep_name.strip()}${full_url}")
-                    play_url_list.append("#".join(ep_str_list))
-                    play_from_list.append("yingshi_1")
+                play_url_list.append("#".join(ep_str_list))
+                play_from_list.append("yingshim3u8")
             
-            if play_url_list:
-                vod_play_from = "$$$".join(play_from_list)
-                vod_play_url = "$$$".join(play_url_list)
-            else:
-                vod_play_from = "yingshi"
-                vod_play_url = "解析失败$https://yingshi.co/test.m3u8"
+            vod_play_from = "$$$".join(play_from_list)
+            vod_play_url = "$$$".join(play_url_list)
 
+            # 【塞满所有可能需要的字段】
             response_data['list'].append({
                 "vod_id": int(vid) if str(vid).isdigit() else vid, 
                 "vod_name": vod_name, 
                 "vod_pic": vod_pic,
                 "type_id": 1, 
                 "type_name": "电影", 
-                "vod_year": "2026",
-                "vod_area": "中国",
+                "vod_en": "yingshi",
+                "vod_time": "2026-03-03 12:00:00",
                 "vod_remarks": "更新完毕",
-                "vod_actor": "未知",
-                "vod_director": "未知",
-                "vod_content": "乌龙解决！这次的格式绝对符合 MacCMS 标准！",
                 "vod_play_from": vod_play_from,
                 "vod_play_url": vod_play_url
             })
