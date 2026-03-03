@@ -1,18 +1,17 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, Response
 import requests
 import re
 import urllib.parse
 import random
 import urllib3
+import json
 
 app = Flask(__name__)
-# 禁用 HTTPS 警告，防止 Vercel 环境报错
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 base_url = "https://yingshi.co"
 
 def fetch_html(url):
-    # 随机假 IP 伪装
     fake_ip = f"{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -29,7 +28,6 @@ def fetch_html(url):
         print(f"抓取失败: {e}")
         return ""
 
-# 万能路由：无论 Vercel 怎么解析路径，都能命中这个函数
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def catch_all(path):
@@ -44,7 +42,12 @@ def catch_all(path):
         "pagecount": 1,
         "limit": 20,
         "total": 0,
-        "class": [{"type_id": 1, "type_name": "影视资源"}],
+        "class": [
+            {"type_id": 1, "type_name": "电影"},
+            {"type_id": 2, "type_name": "电视剧"},
+            {"type_id": 3, "type_name": "综艺"},
+            {"type_id": 4, "type_name": "动漫"}
+        ],
         "list": []
     }
 
@@ -64,24 +67,36 @@ def catch_all(path):
         if names:
             response_data['total'] = len(names)
             for i in range(len(names)):
+                # 修复1：如果没图，给一张默认的灰色占位图防崩溃
                 pic_url = pics[i] if i < len(pics) else ""
-                if pic_url and not pic_url.startswith('http'):
+                if not pic_url:
+                    pic_url = "https://via.placeholder.com/150x200.png?text=No+Image"
+                elif not pic_url.startswith('http'):
                     pic_url = base_url + pic_url
 
+                # 修复2：强制提取纯数字 ID (例如从 /voddetail/73842.html 提取 73842)
+                raw_url = urls[i]
+                vod_id = raw_url
+                id_match = re.search(r'/voddetail/(\d+)\.html', raw_url)
+                if id_match:
+                    vod_id = id_match.group(1)
+
                 response_data['list'].append({
-                    "vod_id": urls[i], 
+                    "vod_id": vod_id, 
                     "vod_name": names[i],
                     "vod_pic": pic_url,
                     "type_id": 1,
                     "vod_remarks": "点击播放"
                 })
-        return jsonify(response_data)
+        # 修复3：强制输出真实中文，拒绝 Unicode 编码
+        return Response(json.dumps(response_data, ensure_ascii=False), mimetype='application/json; charset=utf-8')
 
     # === 详情与播放逻辑 ===
     elif ac == 'detail' and ids:
         id_list = [i for i in ids.split(',') if i]
         for vid in id_list:
-            detail_url = base_url + vid
+            # 根据传进来的纯数字 ID，拼回完整的详情页链接
+            detail_url = f"{base_url}/voddetail/{vid}.html" if vid.isdigit() else (base_url + vid)
             html = fetch_html(detail_url)
 
             item_name_regex = r'<a class="module-play-list-link" href=".*?" title=".*?"><span>(.*?)</span></a>'
@@ -101,10 +116,10 @@ def catch_all(path):
 
             response_data['list'].append({
                 "vod_id": vid,
-                "vod_name": "影视资源",
-                "vod_play_from": "影视工厂",
+                "vod_name": "影视工厂资源",
+                "vod_play_from": "默认线路",
                 "vod_play_url": play_list_str
             })
-        return jsonify(response_data)
+        return Response(json.dumps(response_data, ensure_ascii=False), mimetype='application/json; charset=utf-8')
 
-    return jsonify(response_data)
+    return Response(json.dumps(response_data, ensure_ascii=False), mimetype='application/json; charset=utf-8')
