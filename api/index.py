@@ -44,28 +44,18 @@ def catch_all(path):
     pg = request.values.get('pg', '1')
 
     response_data = {
-        "code": 1,
-        "msg": "数据获取成功",
-        "page": int(pg) if pg.isdigit() else 1,
-        "pagecount": 999,
-        "limit": 20,
-        "total": 9999,
-        "class": [
-            {"type_id": 1, "type_name": "电影"},
-            {"type_id": 2, "type_name": "电视剧"},
-            {"type_id": 3, "type_name": "综艺"},
-            {"type_id": 4, "type_name": "动漫"}
-        ],
+        "code": 1, "msg": "数据获取成功", "page": int(pg) if pg.isdigit() else 1,
+        "pagecount": 999, "limit": 20, "total": 9999,
+        "class": [{"type_id": 1, "type_name": "电影"}],
         "list": []
     }
 
-    # 【终极必杀技】：如果 Syncwe 没传搜索词（开机健康检查）
-    # 我们直接偷偷给它塞一个“我”字！让它走绝对成功的搜索逻辑！
-    if (ac == 'list' or ac == 'videolist') and not wd and not ids:
+    # 应对 Syncwe 的开机健康检查
+    if not wd and not ids:
         wd = "我" 
 
-    # ================= 搜索列表（涵盖了健康检查，复用你验证过的正则） =================
-    if (ac == 'list' or ac == 'videolist') and wd:
+    # ================= 修复：只要有 wd，无论 ac 是什么，都执行搜索逻辑 =================
+    if wd and not ids:
         search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}----------{pg}---.html"
         html = fetch_html(search_url)
 
@@ -92,21 +82,15 @@ def catch_all(path):
                     vod_id = id_match.group(1)
 
                 response_data['list'].append({
-                    "vod_id": vod_id, 
-                    "vod_name": names[i],
-                    "vod_pic": pic_url,
-                    "type_id": 1,
-                    "type_name": "电影",
-                    "vod_remarks": "点击播放",
-                    "vod_time": "2026-03-03",
-                    "vod_play_from": "yingshi",
-                    "vod_director": "未知",
-                    "vod_actor": "未知"
+                    "vod_id": vod_id, "vod_name": names[i], "vod_pic": pic_url,
+                    "type_id": 1, "type_name": "电影", "vod_remarks": "点击播放",
+                    "vod_time": "2026-03-03", "vod_play_from": "yingshi",
+                    "vod_director": "未知", "vod_actor": "未知"
                 })
         return create_response(response_data)
 
     # ================= 详情与播放 =================
-    elif ac == 'detail' and ids:
+    elif ids:
         id_list = [i for i in ids.split(',') if i]
         for vid in id_list:
             detail_url = f"{base_url}/voddetail/{vid}.html" if vid.isdigit() else (base_url + vid if vid.startswith('/') else f"{base_url}/{vid}")
@@ -128,18 +112,12 @@ def catch_all(path):
                 play_list_str = "#".join(ep_list)
 
             response_data['list'].append({
-                "vod_id": vid,
-                "vod_name": "影视工厂资源",
+                "vod_id": vid, "vod_name": "影视工厂资源",
                 "vod_pic": "https://via.placeholder.com/150x200.png?text=No+Image",
-                "type_id": 1,
-                "type_name": "电影",
-                "vod_remarks": "高清",
-                "vod_time": "2026-03-03",
-                "vod_play_from": "yingshi",
-                "vod_play_url": play_list_str,
-                "vod_content": "暂无简介",
-                "vod_director": "未知",
-                "vod_actor": "未知"
+                "type_id": 1, "type_name": "电影", "vod_remarks": "高清",
+                "vod_time": "2026-03-03", "vod_play_from": "yingshi",
+                "vod_play_url": play_list_str, "vod_content": "暂无简介",
+                "vod_director": "未知", "vod_actor": "未知"
             })
         return create_response(response_data)
 
