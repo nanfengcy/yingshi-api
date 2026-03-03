@@ -97,7 +97,6 @@ def catch_all(path):
             if not vod_pic:
                 vod_pic = "https://via.placeholder.com/150x200.png?text=No+Image"
 
-            # 【核心修复】：先按“播放线路”切块，再提取里面的集数
             play_lists = re.findall(r'<div class="module-play-list-content[\s\S]*?>([\s\S]*?)</div>', html)
             
             play_from_list = []
@@ -110,21 +109,29 @@ def catch_all(path):
                     for ep_url, ep_name in episodes:
                         full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
                         ep_str_list.append(f"{ep_name.strip()}${full_url}")
-                    # 每条线路内部的集数用 # 拼接
                     play_url_list.append("#".join(ep_str_list))
                     play_from_list.append(f"线路{i+1}")
             
-            # 多条线路之间用 $$$ 拼接，严格符合 MacCMS 规范
             if play_url_list:
                 vod_play_from = "$$$".join(play_from_list)
                 vod_play_url = "$$$".join(play_url_list)
             else:
                 vod_play_from = "yingshi"
-                vod_play_url = "解析失败$#"
+                vod_play_url = "正片$https://yingshi.co"
 
+            # 【核心修复：塞满所有字段防止 UI 崩溃】
             response_data['list'].append({
-                "vod_id": vid, "vod_name": vod_name, "vod_pic": vod_pic,
-                "type_id": 1, "type_name": "电影", 
+                "vod_id": vid, 
+                "vod_name": vod_name, 
+                "vod_pic": vod_pic,
+                "type_id": 1, 
+                "type_name": "电影", 
+                "vod_year": "2026",
+                "vod_area": "中国",
+                "vod_remarks": "更新完毕",
+                "vod_actor": "未知",
+                "vod_director": "未知",
+                "vod_content": "选集抓取成功！如果点击转圈，说明软件不支持网页直接播放。",
                 "vod_play_from": vod_play_from,
                 "vod_play_url": vod_play_url
             })
