@@ -50,22 +50,17 @@ def catch_all(path):
         "list": []
     }
 
-    # 应对 Syncwe 的开机健康检查
     if not wd and not ids:
         wd = "我" 
 
-    # ================= 修复：只要有 wd，无论 ac 是什么，都执行搜索逻辑 =================
+    # ================= 搜索逻辑 =================
     if wd and not ids:
         search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}----------{pg}---.html"
         html = fetch_html(search_url)
 
-        name_regex = r'<a href="[^"]*?"><strong>(.*?)</strong></a>'
-        url_regex = r'<a href="(.*?)"><strong>.*?</strong></a>'
-        pic_regex = r'<img class="lazy lazyload" data-original="(.*?)" alt=".*?" referrerpolicy="no-referrer" src=".*?">'
-
-        names = re.findall(name_regex, html)
-        urls = re.findall(url_regex, html)
-        pics = re.findall(pic_regex, html)
+        names = re.findall(r'<a href="[^"]*?"><strong>(.*?)</strong></a>', html)
+        urls = re.findall(r'<a href="(.*?)"><strong>.*?</strong></a>', html)
+        pics = re.findall(r'<img class="lazy lazyload" data-original="(.*?)"', html)
 
         if names:
             response_data['total'] = len(names)
@@ -89,34 +84,41 @@ def catch_all(path):
                 })
         return create_response(response_data)
 
-    # ================= 详情与播放 =================
+    # ================= 详情与选集抓取逻辑 =================
     elif ids:
         id_list = [i for i in ids.split(',') if i]
         for vid in id_list:
             detail_url = f"{base_url}/voddetail/{vid}.html" if vid.isdigit() else (base_url + vid if vid.startswith('/') else f"{base_url}/{vid}")
             html = fetch_html(detail_url)
 
-            item_name_regex = r'<a class="module-play-list-link" href=".*?" title=".*?"><span>(.*?)</span></a>'
-            item_url_regex = r'<a class="module-play-list-link" href="(.*?)" title=".*?"><span>.*?</span></a>'
+            # 抓取详情页真实标题和图片
+            title_match = re.search(r'<title>(.*?)</title>', html)
+            vod_name = title_match.group(1).split('-')[0].strip() if title_match else "影视详情"
 
-            ep_names = re.findall(item_name_regex, html)
-            ep_urls = re.findall(item_url_regex, html)
+            pic_match = re.search(r'data-original="([^"]+)"', html)
+            vod_pic = pic_match.group(1) if pic_match else ""
+            vod_pic = base_url + vod_pic if vod_pic and not vod_pic.startswith('http') else vod_pic
+            if not vod_pic:
+                vod_pic = "https://via.placeholder.com/150x200.png?text=No+Image"
 
+            # 暴力提取所有选集名称和链接
+            episodes = re.findall(r'<a[^>]*class="module-play-list-link"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)</span>', html)
+            
             play_list_str = ""
-            if ep_names and ep_urls:
-                ep_list = []
-                for i in range(len(ep_names)):
-                    ep_name = ep_names[i]
-                    ep_url = base_url + ep_urls[i] if ep_urls[i].startswith('/') else ep_urls[i]
-                    ep_list.append(f"{ep_name}${ep_url}")
-                play_list_str = "#".join(ep_list)
+            if episodes:
+                ep_str_list = []
+                for ep_url, ep_name in episodes:
+                    full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
+                    ep_str_list.append(f"{ep_name.strip()}${full_url}")
+                play_list_str = "#".join(ep_str_list)
+            else:
+                play_list_str = "正片$#"
 
             response_data['list'].append({
-                "vod_id": vid, "vod_name": "影视工厂资源",
-                "vod_pic": "https://via.placeholder.com/150x200.png?text=No+Image",
-                "type_id": 1, "type_name": "电影", "vod_remarks": "高清",
+                "vod_id": vid, "vod_name": vod_name, "vod_pic": vod_pic,
+                "type_id": 1, "type_name": "电影", "vod_remarks": "更新",
                 "vod_time": "2026-03-03", "vod_play_from": "yingshi",
-                "vod_play_url": play_list_str, "vod_content": "暂无简介",
+                "vod_play_url": play_list_str, "vod_content": "选集数据抓取成功",
                 "vod_director": "未知", "vod_actor": "未知"
             })
         return create_response(response_data)
