@@ -14,9 +14,8 @@ base_url = "https://yingshi.co"
 def fetch_html(url):
     fake_ip = f"{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': 'https://yingshi.co/',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'X-Forwarded-For': fake_ip,
         'Client-IP': fake_ip
     }
@@ -24,21 +23,35 @@ def fetch_html(url):
         res = requests.get(url, headers=headers, verify=False, timeout=10)
         res.encoding = 'utf-8'
         return res.text
-    except Exception as e:
-        print(f"抓取失败: {e}")
+    except:
         return ""
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
+# 生成带“跨域通行证”的 JSON 响应，防止 App 拦截
+def create_response(data):
+    res = Response(json.dumps(data, ensure_ascii=False), mimetype='application/json; charset=utf-8')
+    res.headers['Access-Control-Allow-Origin'] = '*'
+    res.headers['Access-Control-Allow-Methods'] = '*'
+    res.headers['Access-Control-Allow-Headers'] = '*'
+    return res
+
+# 兼容 GET、POST 以及 OPTIONS 等所有 App 可能发出的请求方法
+@app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/<path:path>', methods=['GET', 'POST', 'OPTIONS'])
 def catch_all(path):
-    ac = request.args.get('ac', 'list')
-    wd = request.args.get('wd', '')
-    ids = request.args.get('ids', '')
+    # App 发送的预检请求，直接放行
+    if request.method == 'OPTIONS':
+        return create_response({})
+
+    # request.values 能同时兼容 URL 参数(GET)和表单数据(POST)
+    ac = request.values.get('ac', 'list')
+    wd = request.values.get('wd', '')
+    ids = request.values.get('ids', '')
+    pg = request.values.get('pg', '1') # 增加页码兼容
 
     response_data = {
         "code": 1,
         "msg": "数据获取成功",
-        "page": 1,
+        "page": int(pg) if pg.isdigit() else 1,
         "pagecount": 1,
         "limit": 20,
         "total": 0,
@@ -53,7 +66,8 @@ def catch_all(path):
 
     # === 搜索逻辑 ===
     if (ac == 'list' or ac == 'videolist') and wd:
-        search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}-------------.html"
+        # 支持软件的翻页请求
+        search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}----------{pg}---.html"
         html = fetch_html(search_url)
 
         name_regex = r'<a href="[^"]*?"><strong>(.*?)</strong></a>'
@@ -67,14 +81,12 @@ def catch_all(path):
         if names:
             response_data['total'] = len(names)
             for i in range(len(names)):
-                # 修复1：如果没图，给一张默认的灰色占位图防崩溃
                 pic_url = pics[i] if i < len(pics) else ""
                 if not pic_url:
                     pic_url = "https://via.placeholder.com/150x200.png?text=No+Image"
                 elif not pic_url.startswith('http'):
                     pic_url = base_url + pic_url
 
-                # 修复2：强制提取纯数字 ID (例如从 /voddetail/73842.html 提取 73842)
                 raw_url = urls[i]
                 vod_id = raw_url
                 id_match = re.search(r'/voddetail/(\d+)\.html', raw_url)
@@ -88,14 +100,12 @@ def catch_all(path):
                     "type_id": 1,
                     "vod_remarks": "点击播放"
                 })
-        # 修复3：强制输出真实中文，拒绝 Unicode 编码
-        return Response(json.dumps(response_data, ensure_ascii=False), mimetype='application/json; charset=utf-8')
+        return create_response(response_data)
 
     # === 详情与播放逻辑 ===
     elif ac == 'detail' and ids:
         id_list = [i for i in ids.split(',') if i]
         for vid in id_list:
-            # 根据传进来的纯数字 ID，拼回完整的详情页链接
             detail_url = f"{base_url}/voddetail/{vid}.html" if vid.isdigit() else (base_url + vid)
             html = fetch_html(detail_url)
 
@@ -120,6 +130,6 @@ def catch_all(path):
                 "vod_play_from": "默认线路",
                 "vod_play_url": play_list_str
             })
-        return Response(json.dumps(response_data, ensure_ascii=False), mimetype='application/json; charset=utf-8')
+        return create_response(response_data)
 
-    return Response(json.dumps(response_data, ensure_ascii=False), mimetype='application/json; charset=utf-8')
+    return create_response(response_data)
