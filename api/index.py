@@ -72,13 +72,12 @@ def catch_all(path):
                 vod_id = raw_url
                 id_match = re.search(r'/voddetail/(\d+)\.html', raw_url)
                 if id_match:
-                    # 突破点1：强制转换为纯数字格式！
                     vod_id = int(id_match.group(1))
 
                 response_data['list'].append({
                     "vod_id": vod_id, "vod_name": names[i], "vod_pic": pic_url,
                     "type_id": 1, "type_name": "电影", "vod_remarks": "点击查看",
-                    "vod_play_from": "yingshim3u8"
+                    "vod_play_from": "yingshi"
                 })
         return create_response(response_data)
 
@@ -98,46 +97,46 @@ def catch_all(path):
             if not vod_pic:
                 vod_pic = "https://via.placeholder.com/150x200.png?text=No+Image"
 
-            # 使用你源码分析出的精准正则，同时匹配整个播放列表区块
             play_lists = re.findall(r'<div class="module-play-list-content[^>]*>([\s\S]*?)</div>', html)
             
             play_from_list = []
             play_url_list = []
             
-            # 第一层保障：按区块提取
             if play_lists:
                 for i, plist in enumerate(play_lists):
-                    episodes = re.findall(r'<a class="module-play-list-link" href="(.*?)" title=".*?"><span>(.*?)</span></a>', plist)
+                    episodes = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)</span>', plist)
                     if episodes:
                         ep_str_list = []
                         for ep_url, ep_name in episodes:
                             full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
-                            # 突破点2：强制给 HTML 网页披上 .m3u8 的羊皮！骗过软件！
+                            
+                            # 【真凶伏法点】：用 ?.m3u8 替换 #.m3u8，绝不破坏分割符！
                             if ".m3u8" not in full_url:
-                                full_url += "#.m3u8"
+                                full_url += "?.m3u8"
+                                
                             ep_str_list.append(f"{ep_name.strip()}${full_url}")
                         play_url_list.append("#".join(ep_str_list))
-                        play_from_list.append("yingshim3u8")
+                        play_from_list.append(f"yingshi_{i+1}")
 
-            # 第二层保底：如果区块没提取到，全局暴力提取一次
+            # 保底全局提取
             if not play_url_list:
-                episodes = re.findall(r'<a class="module-play-list-link" href="(.*?)" title=".*?"><span>(.*?)</span></a>', html)
+                episodes = re.findall(r'<a[^>]*class="[^"]*module-play-list-link[^"]*"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)</span>', html)
                 if episodes:
                     ep_str_list = []
                     for ep_url, ep_name in episodes:
                         full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
                         if ".m3u8" not in full_url:
-                            full_url += "#.m3u8"
+                            full_url += "?.m3u8"
                         ep_str_list.append(f"{ep_name.strip()}${full_url}")
                     play_url_list.append("#".join(ep_str_list))
-                    play_from_list.append("yingshim3u8")
+                    play_from_list.append("yingshi_1")
             
             if play_url_list:
                 vod_play_from = "$$$".join(play_from_list)
                 vod_play_url = "$$$".join(play_url_list)
             else:
-                vod_play_from = "yingshim3u8"
-                vod_play_url = "伪装测试集$https://yingshi.co/test.m3u8"
+                vod_play_from = "yingshi"
+                vod_play_url = "解析失败$https://yingshi.co/test.m3u8"
 
             response_data['list'].append({
                 "vod_id": int(vid) if str(vid).isdigit() else vid, 
@@ -150,7 +149,7 @@ def catch_all(path):
                 "vod_remarks": "更新完毕",
                 "vod_actor": "未知",
                 "vod_director": "未知",
-                "vod_content": "如果终于看到选集了，说明之前真的是被 Syncwe 的后缀检查给屏蔽了！",
+                "vod_content": "乌龙解决！这次的格式绝对符合 MacCMS 标准！",
                 "vod_play_from": vod_play_from,
                 "vod_play_url": vod_play_url
             })
