@@ -58,6 +58,7 @@ def catch_all(path):
         search_url = f"{base_url}/vodsearch/{urllib.parse.quote(wd)}----------{pg}---.html"
         html = fetch_html(search_url)
 
+        # 搜索页结构紧凑，沿用之前的成功正则
         names = re.findall(r'<a href="[^"]*?"><strong>(.*?)</strong></a>', html)
         urls = re.findall(r'<a href="(.*?)"><strong>.*?</strong></a>', html)
         pics = re.findall(r'<img class="lazy lazyload" data-original="(.*?)"', html)
@@ -78,13 +79,13 @@ def catch_all(path):
 
                 response_data['list'].append({
                     "vod_id": vod_id, "vod_name": names[i], "vod_pic": pic_url,
-                    "type_id": 1, "type_name": "电影", "vod_remarks": "点击播放",
+                    "type_id": 1, "type_name": "电影", "vod_remarks": "点击查看",
                     "vod_time": "2026-03-03", "vod_play_from": "yingshi",
                     "vod_director": "未知", "vod_actor": "未知"
                 })
         return create_response(response_data)
 
-    # ================= 详情与选集抓取逻辑 =================
+    # ================= 详情与选集逻辑 =================
     elif ids:
         id_list = [i for i in ids.split(',') if i]
         for vid in id_list:
@@ -101,31 +102,31 @@ def catch_all(path):
             if not vod_pic:
                 vod_pic = "https://via.placeholder.com/150x200.png?text=No+Image"
 
-            # 【核心改动】：完美植入你提供的正则！
-            item_name_regex = r'<a class="module-play-list-link" href=".*?" title=".*?"><span>(.*?)</span></a>'
-            item_url_regex = r'<a class="module-play-list-link" href="(.*?)" title=".*?"><span>.*?</span></a>'
-
-            ep_names = re.findall(item_name_regex, html)
-            ep_urls = re.findall(item_url_regex, html)
+            # 【核心修复】：使用 [\s\S]*? 无视换行符，同时捕获链接和集数名称
+            episodes = re.findall(r'<a[^>]*class="[^"]*module-play-list-link[^"]*"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<span>([\s\S]*?)</span>', html)
 
             play_list_str = ""
-            # 确保抓到的名字数量和链接数量一样，然后把它们拼装起来
-            if ep_names and ep_urls and len(ep_names) == len(ep_urls):
+            ep_count = 0
+            if episodes:
                 ep_list = []
-                for i in range(len(ep_names)):
-                    ep_name = ep_names[i].strip()
-                    ep_url = ep_urls[i].strip()
-                    # 给相对链接加上域名前缀
+                for ep_url, ep_name in episodes:
+                    ep_name = ep_name.strip()
+                    ep_url = ep_url.strip()
                     full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
-                    # 组合格式：第1集$https://...#第2集$https://...
                     ep_list.append(f"{ep_name}${full_url}")
                 play_list_str = "#".join(ep_list)
+                ep_count = len(episodes)
+            else:
+                # 如果还是瞎了，给一个测试数据垫底，防止 Syncwe 崩溃
+                play_list_str = "测试集$https://yingshi.co"
 
             response_data['list'].append({
                 "vod_id": vid, "vod_name": vod_name, "vod_pic": vod_pic,
-                "type_id": 1, "type_name": "电影", "vod_remarks": "更新",
-                "vod_time": "2026-03-03", "vod_play_from": "yingshi",
-                "vod_play_url": play_list_str, "vod_content": "选集数据抓取成功",
+                "type_id": 1, "type_name": "电影", 
+                "vod_remarks": f"成功抓取 {ep_count} 集", # 【探针】：显示在简介处，如果为0就是正则还是没匹配到
+                "vod_time": "2026-03-03", "vod_play_from": "影视工厂",
+                "vod_play_url": play_list_str, 
+                "vod_content": f"系统探针反馈：后台共抓取到 {ep_count} 个播放链接。",
                 "vod_director": "未知", "vod_actor": "未知"
             })
         return create_response(response_data)
