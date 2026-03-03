@@ -91,7 +91,7 @@ def catch_all(path):
             detail_url = f"{base_url}/voddetail/{vid}.html" if vid.isdigit() else (base_url + vid if vid.startswith('/') else f"{base_url}/{vid}")
             html = fetch_html(detail_url)
 
-            # 抓取详情页真实标题和图片
+            # 抓取标题和图片
             title_match = re.search(r'<title>(.*?)</title>', html)
             vod_name = title_match.group(1).split('-')[0].strip() if title_match else "影视详情"
 
@@ -101,18 +101,25 @@ def catch_all(path):
             if not vod_pic:
                 vod_pic = "https://via.placeholder.com/150x200.png?text=No+Image"
 
-            # 暴力提取所有选集名称和链接
-            episodes = re.findall(r'<a[^>]*class="module-play-list-link"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)</span>', html)
-            
+            # 【核心改动】：完美植入你提供的正则！
+            item_name_regex = r'<a class="module-play-list-link" href=".*?" title=".*?"><span>(.*?)</span></a>'
+            item_url_regex = r'<a class="module-play-list-link" href="(.*?)" title=".*?"><span>.*?</span></a>'
+
+            ep_names = re.findall(item_name_regex, html)
+            ep_urls = re.findall(item_url_regex, html)
+
             play_list_str = ""
-            if episodes:
-                ep_str_list = []
-                for ep_url, ep_name in episodes:
+            # 确保抓到的名字数量和链接数量一样，然后把它们拼装起来
+            if ep_names and ep_urls and len(ep_names) == len(ep_urls):
+                ep_list = []
+                for i in range(len(ep_names)):
+                    ep_name = ep_names[i].strip()
+                    ep_url = ep_urls[i].strip()
+                    # 给相对链接加上域名前缀
                     full_url = base_url + ep_url if ep_url.startswith('/') else ep_url
-                    ep_str_list.append(f"{ep_name.strip()}${full_url}")
-                play_list_str = "#".join(ep_str_list)
-            else:
-                play_list_str = "正片$#"
+                    # 组合格式：第1集$https://...#第2集$https://...
+                    ep_list.append(f"{ep_name}${full_url}")
+                play_list_str = "#".join(ep_list)
 
             response_data['list'].append({
                 "vod_id": vid, "vod_name": vod_name, "vod_pic": vod_pic,
