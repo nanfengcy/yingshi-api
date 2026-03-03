@@ -6,16 +6,26 @@ import urllib.parse
 app = Flask(__name__)
 base_url = "https://yingshi.co"
 
+import random
+
 def fetch_html(url):
+    # 随机生成一个假 IP，迷惑防火墙
+    fake_ip = f"{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}.{random.randint(11, 250)}"
+    
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://yingshi.co/',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'X-Forwarded-For': fake_ip,
+        'Client-IP': fake_ip
     }
     try:
-        # 忽略 SSL 警告并设置 10 秒超时
         res = requests.get(url, headers=headers, verify=False, timeout=10)
         res.encoding = 'utf-8'
         return res.text
-    except:
+    except Exception as e:
+        print(f"请求报错: {e}")
         return ""
 
 @app.route('/api', methods=['GET'])
